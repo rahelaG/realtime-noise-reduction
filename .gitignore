@@ -1,0 +1,15 @@
+# Python environment and generated files
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local editor settings
+.vscode/
+
+# Local recordings
+recordings/
+
+# Operating system files
+Thumbs.db
+.DS_Store
