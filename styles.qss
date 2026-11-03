@@ -1,0 +1,135 @@
+QWidget {
+    background-color: #111827;
+    color: #e5e7eb;
+    font-family: "Segoe UI";
+    font-size: 13px;
+}
+
+QLabel#AppTitle {
+    font-size: 26px;
+    font-weight: 700;
+    color: #f9fafb;
+}
+
+QLabel#Subtitle {
+    color: #9ca3af;
+}
+
+QLabel#SectionTitle {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+QLabel#MutedText {
+    color: #9ca3af;
+}
+
+QLabel#StatusBadge {
+    background-color: #243244;
+    color: #cbd5e1;
+    border-radius: 10px;
+    padding: 6px 12px;
+}
+
+QFrame#Card {
+    background-color: #192233;
+    border: 1px solid #2d3a4d;
+    border-radius: 12px;
+}
+
+QFrame#Card QLabel {
+    background-color: transparent;
+}
+
+QPushButton {
+    background-color: #29364a;
+    border: 1px solid #40506a;
+    border-radius: 7px;
+    padding: 9px 16px;
+    font-weight: 600;
+}
+
+QPushButton:hover {
+    background-color: #35465e;
+}
+
+QPushButton:pressed {
+    background-color: #223047;
+}
+
+QPushButton:focus {
+    border: 1px solid #60a5fa;
+}
+
+QPushButton:disabled {
+    background-color: #202a3a;
+    color: #8491a5;
+    border-color: #303d50;
+}
+
+QPushButton#PrimaryButton {
+    background-color: #2563eb;
+    color: white;
+    border-color: #2563eb;
+}
+
+QPushButton#PrimaryButton:hover {
+    background-color: #1d4ed8;
+}
+
+QPushButton#PrimaryButton:disabled {
+    background-color: #253857;
+    color: #93a4bd;
+    border-color: #354968;
+}
+
+QComboBox {
+    background-color: #111827;
+    border: 1px solid #40506a;
+    border-radius: 7px;
+    padding: 9px;
+    min-width: 140px;
+}
+
+QComboBox:disabled {
+    color: #8491a5;
+    border-color: #303d50;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #192233;
+    color: #e5e7eb;
+    selection-background-color: #2563eb;
+}
+
+QTabWidget::pane {
+    border: none;
+}
+
+QTabBar::tab {
+    background-color: #111827;
+    color: #9ca3af;
+    padding: 10px 20px;
+    margin-right: 8px;
+    border-bottom: 2px solid transparent;
+}
+
+QTabBar::tab:selected {
+    color: #f9fafb;
+    border-bottom: 2px solid #2dd4bf;
+}
+
+QTabBar::tab:disabled {
+    color: #78869b;
+}
+
+QScrollArea {
+    border: none;
+}
+
+QToolTip {
+    background-color: #29364a;
+    color: #f9fafb;
+    border: 1px solid #52647e;
+    padding: 5px;
+}
