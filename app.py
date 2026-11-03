@@ -1,3 +1,4 @@
+import sounddevice as sd
 import sys
 from pathlib import Path
 
@@ -77,10 +78,11 @@ class MainWindow(QMainWindow):
 
         root.addWidget(self.tabs, 1)
         root.addLayout(self.create_footer())
-
         self.statusBar().showMessage(
-            "Interface layout ready. Audio is not connected yet."
+            "Select your audio devices. Live audio is not connected yet."
         )
+
+        self.refresh_devices()
 
     def create_header(self):
         layout = QHBoxLayout()
@@ -127,6 +129,146 @@ class MainWindow(QMainWindow):
         layout.addLayout(workspace, 1)
         return page
 
+    def refresh_devices(self):
+        """Read devices and preserve the previous selection if possible."""
+        previous_input = self.input_device.currentData()
+        previous_output = self.output_device.currentData()
+
+        self.refresh_button.setEnabled(False)
+        self.input_device.blockSignals(True)
+        self.output_device.blockSignals(True)
+
+        self.input_device.clear()
+        self.output_device.clear()
+
+        try:
+            devices = sd.query_devices()
+            host_apis = sd.query_hostapis()
+
+            wasapi_ids = [
+                index
+                for index, api in enumerate(host_apis)
+                if "WASAPI" in api["name"].upper()
+            ]
+
+            if wasapi_ids:
+                selected_api = wasapi_ids[0]
+            else:
+                selected_api = sd.default.hostapi
+
+            api_name = host_apis[selected_api]["name"]
+
+            default_input = host_apis[selected_api]["default_input_device"]
+            default_output = host_apis[selected_api]["default_output_device"]
+
+            for device_id, device in enumerate(devices):
+                if device["hostapi"] != selected_api:
+                    continue
+
+                # Store a stable description alongside the current device ID.
+                device_data = (
+                    device_id,
+                    device["name"],
+                    device["hostapi"],
+                )
+
+                if device["max_input_channels"] >= 1:
+                    self.input_device.addItem(
+                        device["name"],
+                        device_data,
+                    )
+
+                if device["max_output_channels"] >= 2:
+                    self.output_device.addItem(
+                        device["name"],
+                        device_data,
+                    )
+
+            self.restore_device_selection(
+                self.input_device,
+                previous_input,
+                default_input,
+            )
+            self.restore_device_selection(
+                self.output_device,
+                previous_output,
+                default_output,
+            )
+
+            self.input_device.setEnabled(self.input_device.count() > 0)
+            self.output_device.setEnabled(self.output_device.count() > 0)
+
+            if self.input_device.count() == 0:
+                self.input_device.addItem("No microphone available", None)
+
+            if self.output_device.count() == 0:
+                self.output_device.addItem("No stereo output available", None)
+
+            self.audio_api_name = api_name
+            self.update_device_message()
+
+        except (sd.PortAudioError, ValueError, IndexError) as error:
+            self.input_device.clear()
+            self.output_device.clear()
+
+            self.input_device.addItem("Devices unavailable", None)
+            self.output_device.addItem("Devices unavailable", None)
+
+            self.input_device.setEnabled(False)
+            self.output_device.setEnabled(False)
+
+            self.device_message.setText(
+                f"Could not read audio devices: {error}"
+            )
+
+        finally:
+            self.input_device.blockSignals(False)
+            self.output_device.blockSignals(False)
+            self.refresh_button.setEnabled(True)
+
+    def restore_device_selection(self, combo, previous, default_id):
+        """Prefer the previous device, then the API's default device."""
+        if previous is not None:
+            # First try to match both the old ID and device description.
+            for index in range(combo.count()):
+                if combo.itemData(index) == previous:
+                    combo.setCurrentIndex(index)
+                    return
+
+            # Device IDs can change, so also compare name and host API.
+            for index in range(combo.count()):
+                data = combo.itemData(index)
+
+                if data[1:] == previous[1:]:
+                    combo.setCurrentIndex(index)
+                    return
+
+        for index in range(combo.count()):
+            if combo.itemData(index)[0] == default_id:
+                combo.setCurrentIndex(index)
+                return
+
+        if combo.count() > 0:
+            combo.setCurrentIndex(0)
+
+    def update_device_message(self, _index=None):
+        input_data = self.input_device.currentData()
+        output_data = self.output_device.currentData()
+
+        if input_data is None or output_data is None:
+            self.device_message.setText(
+                "Connect a microphone and a stereo output device, "
+                "then refresh the list."
+            )
+            return
+
+        api_name = getattr(self, "audio_api_name", "Audio")
+
+        self.device_message.setText(
+            f"{api_name} · Devices selected. "
+            "Live audio will be connected in the next step."
+        )
+
     def create_devices_card(self):
         card, layout = make_card(
             "Audio Devices",
@@ -140,26 +282,28 @@ class MainWindow(QMainWindow):
         input_column.addWidget(make_label("Input Device"))
 
         self.input_device = QComboBox()
-        self.input_device.addItem("Device selection not connected yet")
-        self.input_device.setEnabled(False)
         input_column.addWidget(self.input_device)
 
         output_column = QVBoxLayout()
         output_column.addWidget(make_label("Output Device"))
 
         self.output_device = QComboBox()
-        self.output_device.addItem("Device selection not connected yet")
-        self.output_device.setEnabled(False)
         output_column.addWidget(self.output_device)
 
         devices_row.addLayout(input_column, 1)
         devices_row.addLayout(output_column, 1)
         layout.addLayout(devices_row)
 
+        self.device_message = make_label(
+            "Reading available audio devices...",
+            "MutedText",
+        )
+        layout.addWidget(self.device_message)
+
         buttons = QHBoxLayout()
 
         self.refresh_button = QPushButton("Refresh Devices")
-        self.refresh_button.setEnabled(False)
+        self.refresh_button.clicked.connect(self.refresh_devices)
 
         self.start_button = QPushButton("Start")
         self.start_button.setObjectName("PrimaryButton")
@@ -174,6 +318,14 @@ class MainWindow(QMainWindow):
         buttons.addWidget(self.stop_button)
 
         layout.addLayout(buttons)
+
+        self.input_device.currentIndexChanged.connect(
+            self.update_device_message
+        )
+        self.output_device.currentIndexChanged.connect(
+            self.update_device_message
+        )
+
         return card
 
     def create_filters_card(self):
