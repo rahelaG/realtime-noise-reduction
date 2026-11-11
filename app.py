@@ -2,7 +2,8 @@ import sounddevice as sd
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
+from audio_engine import AudioEngine
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -48,6 +49,11 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
+        self.audio_engine = AudioEngine()
+        self.audio_timer = QTimer(self)
+        self.audio_timer.setInterval(250)
+        self.audio_timer.timeout.connect(self.check_audio_stream)
+
         self.setWindowTitle("Noise Reduction Studio")
         self.resize(1180, 820)
         self.setMinimumSize(860, 640)
@@ -79,7 +85,7 @@ class MainWindow(QMainWindow):
         root.addWidget(self.tabs, 1)
         root.addLayout(self.create_footer())
         self.statusBar().showMessage(
-            "Select your audio devices. Live audio is not connected yet."
+             self.statusBar().showMessage("Select your audio devices and press Start.")
         )
 
         self.refresh_devices()
@@ -137,6 +143,7 @@ class MainWindow(QMainWindow):
         self.refresh_button.setEnabled(False)
         self.input_device.blockSignals(True)
         self.output_device.blockSignals(True)
+        self.start_button.setEnabled(False)
 
         self.input_device.clear()
         self.output_device.clear()
@@ -254,21 +261,79 @@ class MainWindow(QMainWindow):
     def update_device_message(self, _index=None):
         input_data = self.input_device.currentData()
         output_data = self.output_device.currentData()
+        ready = input_data is not None and output_data is not None
 
-        if input_data is None or output_data is None:
+        self.start_button.setEnabled(ready and not self.audio_timer.isActive())
+
+        if not ready:
             self.device_message.setText(
-                "Connect a microphone and a stereo output device, "
-                "then refresh the list."
+                "Connect a microphone and stereo output, then refresh."
             )
             return
 
         api_name = getattr(self, "audio_api_name", "Audio")
+        self.device_message.setText(f"{api_name} · Ready to start.")
 
-        self.device_message.setText(
-            f"{api_name} · Devices selected. "
-            "Live audio will be connected in the next step."
+    def start_audio(self):
+        input_data = self.input_device.currentData()
+        output_data = self.output_device.currentData()
+
+        if input_data is None or output_data is None:
+            self.update_device_message()
+            return
+
+        try:
+            self.audio_engine.start(input_data[0], output_data[0])
+        except (sd.PortAudioError, ValueError, RuntimeError) as error:
+            self.statusBar().showMessage("Audio could not start.")
+            QMessageBox.warning(self, "Could not start audio", str(error))
+            return
+
+        self.audio_timer.start()
+        self.set_audio_running(True)
+        self.device_message.setText("Running · Original microphone audio")
+        self.statusBar().showMessage("Audio running at 48 kHz.")
+
+    def stop_audio(self, message="Audio stopped."):
+        self.audio_timer.stop()
+
+        try:
+            self.audio_engine.stop()
+        except sd.PortAudioError as error:
+            message = f"Could not close audio cleanly: {error}"
+        finally:
+            self.set_audio_running(False)
+            self.update_device_message()
+            self.statusBar().showMessage(message)
+
+    def set_audio_running(self, running):
+        self.input_device.setEnabled(
+            not running and self.input_device.currentData() is not None
         )
+        self.output_device.setEnabled(
+            not running and self.output_device.currentData() is not None
+        )
+        self.refresh_button.setEnabled(not running)
+        self.stop_button.setEnabled(running)
 
+        if running:
+            self.start_button.setEnabled(False)
+
+    def check_audio_stream(self):
+        try:
+            active = self.audio_engine.active
+        except sd.PortAudioError as error:
+            self.stop_audio(f"Audio device error: {error}")
+            return
+
+        if not active:
+            self.stop_audio(
+                "Audio stopped unexpectedly. Check your devices and try again."
+            )
+
+    def closeEvent(self, event):
+        self.stop_audio()
+        super().closeEvent(event)
     def create_devices_card(self):
         card, layout = make_card(
             "Audio Devices",
@@ -311,6 +376,9 @@ class MainWindow(QMainWindow):
 
         self.stop_button = QPushButton("Stop")
         self.stop_button.setEnabled(False)
+
+        self.start_button.clicked.connect(self.start_audio)
+        self.stop_button.clicked.connect(lambda: self.stop_audio())
 
         buttons.addWidget(self.refresh_button)
         buttons.addStretch()
