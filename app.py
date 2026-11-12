@@ -404,16 +404,12 @@ class MainWindow(QMainWindow):
     def create_monitoring_card(self):
         card, layout = make_card("Monitoring")
         controls = QHBoxLayout()
-        controls.setSpacing(16)
-
         self.listen_checkbox = QCheckBox("Listen")
         self.listen_checkbox.setChecked(True)
-
         self.monitor_source = QComboBox()
         self.monitor_source.addItem("Original", False)
         self.monitor_source.addItem("Filtered", True)
         self.monitor_source.setAccessibleName("Playback source")
-
         self.volume_slider = QSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(50)
@@ -428,11 +424,6 @@ class MainWindow(QMainWindow):
         controls.addWidget(self.volume_slider, 1)
         controls.addWidget(self.volume_value)
         layout.addLayout(controls)
-        layout.addWidget(make_label(
-            "Choose Filtered to hear the filter applied in Noise Reduction.",
-            "MutedText",
-        ))
-
         self.listen_checkbox.toggled.connect(self.update_monitoring)
         self.monitor_source.currentIndexChanged.connect(self.update_monitoring)
         self.volume_slider.valueChanged.connect(self.update_monitoring)
@@ -440,12 +431,12 @@ class MainWindow(QMainWindow):
         return card
 
     def update_monitoring(self, _value=None):
-        volume_percent = self.volume_slider.value()
-        self.volume_value.setText(f"{volume_percent}%")
+        volume = self.volume_slider.value()
+        self.volume_value.setText(f"{volume}%")
         self.audio_engine.set_monitoring(
-            listen=self.listen_checkbox.isChecked(),
-            use_filtered=bool(self.monitor_source.currentData()),
-            volume=volume_percent / 100,
+            self.listen_checkbox.isChecked(),
+            bool(self.monitor_source.currentData()),
+            volume / 100,
         )
 
     def create_filters_card(self):
@@ -458,9 +449,32 @@ class MainWindow(QMainWindow):
 
         presets_page = QWidget()
         presets_layout = QVBoxLayout(presets_page)
-        presets_layout.addWidget(
-            make_label("Presets will be available in the next step.", "MutedText")
-        )
+        self.preset_combo = QComboBox()
+        for name, kind, settings, description in (
+            ("50 Hz Hum", "notch", {"frequency": 50, "quality": 30},
+             "Notch at 50 Hz (Q 30)"),
+            ("Muffled Voice Demo", "lowpass", {"cutoff": 500},
+             "Low-pass at 500 Hz"),
+            ("Thin Voice Demo", "highpass", {"cutoff": 1500},
+             "High-pass at 1,500 Hz"),
+            ("1 kHz Test Tone", "notch", {"frequency": 1000, "quality": 30},
+             "Notch at 1,000 Hz (Q 30)"),
+        ):
+            self.preset_combo.addItem(name, (kind, settings, description))
+
+        self.preset_description = make_label("", "MutedText")
+        self.preset_error = make_label("")
+        self.preset_error.setStyleSheet("color: #fca5a5;")
+        apply_preset = QPushButton("Apply Preset")
+        apply_preset.setObjectName("PrimaryButton")
+        apply_preset.clicked.connect(self.apply_preset)
+        customize = QPushButton("Customize")
+        customize.clicked.connect(self.customize_preset)
+        for widget in (
+            self.preset_combo, self.preset_description, self.preset_error,
+            apply_preset, customize,
+        ):
+            presets_layout.addWidget(widget)
         presets_layout.addStretch()
 
         custom_page = QWidget()
@@ -532,26 +546,59 @@ class MainWindow(QMainWindow):
         )
         layout.addWidget(self.applied_filter_label)
 
+        self.applied_settings = ("lowpass", {"cutoff": 1000})
+        self.pending_filter_label = make_label("", "MutedText")
+        layout.addWidget(self.pending_filter_label)
+        self.preset_combo.currentIndexChanged.connect(self.update_filter_status)
+        self.filter_tabs.currentChanged.connect(self.update_filter_status)
+        for field in self.filter_fields.values():
+            field.valueChanged.connect(self.update_filter_status)
+
         self.filter_type.currentIndexChanged.connect(self.update_filter_fields)
         self.update_filter_fields()
 
         return card
 
-    def update_filter_fields(self, _index=None):
-        fields_by_filter = {
-            "highpass": ("cutoff",),
-            "lowpass": ("cutoff",),
-            "bandstop": ("low", "high"),
-            "notch": ("frequency", "quality"),
-        }
-        visible_fields = fields_by_filter[self.filter_type.currentData()]
+    FILTER_FIELDS = {
+        "highpass": ("cutoff",),
+        "lowpass": ("cutoff",),
+        "bandstop": ("low", "high"),
+        "notch": ("frequency", "quality"),
+    }
 
+    def update_filter_fields(self, _index=None):
+        visible_fields = self.FILTER_FIELDS[self.filter_type.currentData()]
         for key, field in self.filter_fields.items():
             visible = key in visible_fields
             field.setVisible(visible)
             self.filter_form.labelForField(field).setVisible(visible)
+        self.update_filter_status()
 
+    def update_filter_status(self, _value=None):
+        kind, settings, description = self.preset_combo.currentData()
+        self.preset_description.setText(description)
+        self.preset_error.hide()
         self.filter_error.hide()
+        if self.filter_tabs.currentIndex() == 1:
+            kind = self.filter_type.currentData()
+            settings = {
+                key: self.filter_fields[key].value()
+                for key in self.FILTER_FIELDS[kind]
+            }
+        self.pending_filter_label.setText(
+            "Unapplied changes" if (kind, settings) != self.applied_settings else ""
+        )
+
+    def customize_preset(self):
+        kind, settings, _description = self.preset_combo.currentData()
+        self.filter_type.setCurrentIndex(self.filter_type.findData(kind))
+        for key, value in settings.items():
+            self.filter_fields[key].setValue(value)
+        self.filter_tabs.setCurrentIndex(1)
+
+    def apply_preset(self):
+        kind, settings, description = self.preset_combo.currentData()
+        self.apply_filter(kind, settings, description, self.preset_error)
 
     def apply_custom_filter(self):
         filter_type = self.filter_type.currentData()
@@ -582,15 +629,19 @@ class MainWindow(QMainWindow):
             settings = {"frequency": frequency, "quality": quality}
             description = f"{filter_name} at {frequency:,.1f} Hz (Q {quality:g})"
 
+        self.apply_filter(filter_type, settings, description, self.filter_error)
+
+    def apply_filter(self, filter_type, settings, description, error_label):
         try:
             self.audio_engine.set_filter(filter_type, **settings)
         except ValueError as error:
-            self.filter_error.setText(str(error))
-            self.filter_error.show()
+            error_label.setText(str(error))
+            error_label.show()
             return
 
-        self.filter_error.hide()
+        self.applied_settings = (filter_type, settings)
         self.applied_filter_label.setText(f"Applied: {description}")
+        self.update_filter_status()
 
     def create_analysis_card(self):
         card, layout = make_card(
@@ -646,9 +697,8 @@ class MainWindow(QMainWindow):
             "About Noise Reduction Studio",
             "This application reduces audio components in selected "
             "frequency ranges.\n\n"
-            "Live Studio captures and filters microphone audio.\n"
+            "Live Studio will capture and filter microphone audio.\n"
             "Test Lab will provide repeatable experiments with known noise.\n\n"
-            "Select your microphone and headphones, then press Start. "
             "Choose Filtered in Monitoring to hear the applied filter.",
         )
 
