@@ -15,7 +15,7 @@ def detect_steady_tone(samples, sample_rate):
 
     for block in np.split(samples[-4 * block_size:], 4):
         centered = block - np.mean(block)
-        if np.sqrt(np.mean(centered ** 2)) < 0.001:
+        if np.sqrt(np.mean(centered ** 2)) < 0.0001:
             return None
 
         spectrum = np.abs(np.fft.rfft(centered * window, n=fft_size))

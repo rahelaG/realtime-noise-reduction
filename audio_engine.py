@@ -8,11 +8,14 @@ from collections import deque
 
 from scipy.signal import freqz_sos
 
+from time import perf_counter
+
 
 class AudioEngine:
     def __init__(self, sample_rate=48000):
         self.sample_rate = sample_rate
         self._stream = None
+        self.metrics = (0.0, 0.0, 0)
         self.analysis_blocks = deque(maxlen=128)
         self._monitoring = (True, False, 0.5)
         self._requested_settings = ("lowpass", {"cutoff": 1000})
@@ -70,6 +73,7 @@ class AudioEngine:
             device=output_id, channels=2, dtype="float32",
             samplerate=self.sample_rate,
         )
+        self.metrics = (0.0, 0.0, 0)
         self.analysis_blocks.clear()
         self._active_filter = self._requested_filter
         self._active_filter.reset()
@@ -129,18 +133,22 @@ class AudioEngine:
         return blended
 
     def _process_audio(self, indata, outdata, frames, time_info, status):
+        started_at = perf_counter()
         listen, use_filtered, volume = self._monitoring
-        original = indata[:, 0]
-        filtered = self._filter_block(original)
+
         original = indata[:, 0]
         filtered = self._filter_block(original)
         self.analysis_blocks.append((original.copy(), filtered.copy()))
 
-        if not listen:
+        if listen:
+            playback = filtered if use_filtered else original
+            np.multiply(playback, volume, out=outdata[:, 0])
+            np.clip(outdata[:, 0], -1.0, 1.0, out=outdata[:, 0])
+            outdata[:, 1] = outdata[:, 0]
+        else:
             outdata.fill(0)
-            return
 
-        playback = filtered if use_filtered else original
-        np.multiply(playback, volume, out=outdata[:, 0])
-        np.clip(outdata[:, 0], -1.0, 1.0, out=outdata[:, 0])
-        outdata[:, 1] = outdata[:, 0]
+        peak = float(np.max(np.abs(original))) if frames else 0.0
+        warnings = self.metrics[2] + int(bool(status))
+        elapsed_ms = (perf_counter() - started_at) * 1000
+        self.metrics = (peak, elapsed_ms, warnings)

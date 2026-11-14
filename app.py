@@ -342,7 +342,15 @@ class MainWindow(QMainWindow):
             self.stop_audio(
                 "Audio stopped unexpectedly. Check your devices and try again."
             )
+            return
 
+        peak, processing_ms, warnings = self.audio_engine.metrics
+        self.audio_metrics_label.setText(
+            f"Input peak: {peak * 100:.1f}%  |  "
+            f"Processing: {processing_ms:.2f} ms  |  "
+            f"Audio warnings: {warnings}"
+        )
+        
     def closeEvent(self, event):
         self.stop_audio()
         super().closeEvent(event)
@@ -398,6 +406,11 @@ class MainWindow(QMainWindow):
         buttons.addWidget(self.stop_button)
 
         layout.addLayout(buttons)
+        self.audio_metrics_label = make_label(
+            "Input peak: —  |  Processing: —  |  Audio warnings: —",
+            "MutedText",
+        )
+        layout.addWidget(self.audio_metrics_label)
 
         self.input_device.currentIndexChanged.connect(
             self.update_device_message
