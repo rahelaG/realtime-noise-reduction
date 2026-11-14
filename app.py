@@ -5,6 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QTimer
 from audio_engine import AudioEngine
 from audio_plots import AudioPlots
+from auto_noise import detect_steady_tone
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -301,6 +302,11 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Audio running at 48 kHz.")
 
     def stop_audio(self, message="Audio stopped."):
+        if self.auto_timer.isActive():
+            self.auto_timer.stop()
+            self.auto_button.setEnabled(True)
+            self.auto_result.setText("Calibration cancelled. Audio stopped.")
+
         self.audio_timer.stop()
 
         try:
@@ -538,6 +544,7 @@ class MainWindow(QMainWindow):
 
         self.filter_tabs.addTab(presets_page, "Presets")
         self.filter_tabs.addTab(custom_page, "Custom")
+        self.filter_tabs.addTab(self.create_auto_page(), "Auto")
         self.filter_tabs.setCurrentWidget(custom_page)
         layout.addWidget(self.filter_tabs, 1)
 
@@ -586,6 +593,10 @@ class MainWindow(QMainWindow):
                 key: self.filter_fields[key].value()
                 for key in self.FILTER_FIELDS[kind]
             }
+        if self.filter_tabs.currentIndex() == 2:
+            self.pending_filter_label.clear()
+            return
+
         self.pending_filter_label.setText(
             "Unapplied changes" if (kind, settings) != self.applied_settings else ""
         )
@@ -638,13 +649,72 @@ class MainWindow(QMainWindow):
         except ValueError as error:
             error_label.setText(str(error))
             error_label.show()
-            return
+            return False
 
         self.applied_settings = (filter_type, settings)
         self.applied_filter_label.setText(f"Applied: {description}")
-        self.applied_filter_label.setText(f"Applied: {description}")
         self.audio_plots.update_response()
         self.update_filter_status()
+        return True
+
+    def create_auto_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.addWidget(make_label(
+            "Start the microphone and stay quiet during calibration.",
+            "MutedText",
+        ))
+
+        self.auto_button = QPushButton("Calibrate")
+        self.auto_button.setObjectName("PrimaryButton")
+        self.auto_button.clicked.connect(self.start_auto_calibration)
+        layout.addWidget(self.auto_button)
+
+        self.auto_result = make_label("Ready to calibrate.", "MutedText")
+        layout.addWidget(self.auto_result)
+        layout.addStretch()
+
+        self.auto_timer = QTimer(self)
+        self.auto_timer.setSingleShot(True)
+        self.auto_timer.timeout.connect(self.finish_auto_calibration)
+        return page
+
+    def start_auto_calibration(self):
+        if not self.audio_engine.active:
+            self.auto_result.setText("Press Start before calibrating.")
+            return
+
+        self.auto_button.setEnabled(False)
+        self.auto_result.setText("Listening to the background. Please stay quiet.")
+        self.auto_timer.start(2000)
+
+    def finish_auto_calibration(self):
+        self.auto_button.setEnabled(True)
+        if not self.audio_engine.active:
+            self.auto_result.setText("Calibration cancelled. Audio stopped.")
+            return
+
+        samples = self.audio_plots.history[0]
+        sample_rate = self.audio_engine.sample_rate
+        if len(samples) < sample_rate:
+            self.auto_result.setText("Not enough audio. Try calibrating again.")
+            return
+
+        frequency = detect_steady_tone(samples, sample_rate)
+        if frequency is None:
+            if self.apply_filter("none", {}, "No filter", self.auto_result):
+                self.auto_result.setText("No stable tone detected. No filter applied.")
+            return
+
+        if self.apply_filter(
+            "notch",
+            {"frequency": frequency, "quality": 20.0},
+            f"Auto notch at {frequency:,.1f} Hz",
+            self.auto_result,
+        ):
+            self.auto_result.setText(
+                f"Detected steady tone at {frequency:,.1f} Hz. Notch applied."
+            )
 
     def create_analysis_card(self):
         card, layout = make_card(
