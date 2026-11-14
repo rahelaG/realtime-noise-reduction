@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
 from audio_engine import AudioEngine
+from audio_plots import AudioPlots
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -293,7 +294,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Audio could not start.")
             QMessageBox.warning(self, "Could not start audio", str(error))
             return
-
+        self.audio_plots.reset_live()
         self.audio_timer.start()
         self.set_audio_running(True)
         self.device_message.setText("Running · Live microphone audio")
@@ -451,14 +452,14 @@ class MainWindow(QMainWindow):
         presets_layout = QVBoxLayout(presets_page)
         self.preset_combo = QComboBox()
         for name, kind, settings, description in (
-            ("50 Hz Hum", "notch", {"frequency": 50, "quality": 30},
-             "Notch at 50 Hz (Q 30)"),
+             ("Low Voice Notch Demo", "notch", {"frequency": 300, "quality": 0.7},
+             "Wide notch at 300 Hz (Q 0.7)"),
             ("Muffled Voice Demo", "lowpass", {"cutoff": 500},
              "Low-pass at 500 Hz"),
             ("Thin Voice Demo", "highpass", {"cutoff": 1500},
              "High-pass at 1,500 Hz"),
-            ("1 kHz Test Tone", "notch", {"frequency": 1000, "quality": 30},
-             "Notch at 1,000 Hz (Q 30)"),
+            ("Mid Voice Notch Demo", "notch", {"frequency": 1000, "quality": 0.7},
+             "Wide notch at 1,000 Hz (Q 0.7)"),
         ):
             self.preset_combo.addItem(name, (kind, settings, description))
 
@@ -641,6 +642,8 @@ class MainWindow(QMainWindow):
 
         self.applied_settings = (filter_type, settings)
         self.applied_filter_label.setText(f"Applied: {description}")
+        self.applied_filter_label.setText(f"Applied: {description}")
+        self.audio_plots.update_response()
         self.update_filter_status()
 
     def create_analysis_card(self):
@@ -648,38 +651,9 @@ class MainWindow(QMainWindow):
             "Audio Analysis",
             "Compare the original and filtered signals.",
         )
-
-        legend = QHBoxLayout()
-        original = make_label("Original")
-        original.setStyleSheet("color: #60a5fa;")
-
-        filtered = make_label("Filtered")
-        filtered.setStyleSheet("color: #2dd4bf;")
-
-        legend.addWidget(original)
-        legend.addWidget(filtered)
-        legend.addStretch()
-        layout.addLayout(legend)
-
-        placeholder = make_label(
-            "Live plots will appear here once audio processing "
-            "and visualization are connected.",
-            "MutedText",
-        )
-        placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        placeholder.setMinimumHeight(230)
-
-        layout.addWidget(placeholder, 1)
-        layout.addWidget(
-            make_label(
-                "Planned views: Waveform · Frequency Spectrum · "
-                "Filter Response",
-                "MutedText",
-            )
-        )
-
+        self.audio_plots = AudioPlots(self.audio_engine)
+        layout.addWidget(self.audio_plots, 1)
         return card
-
     def create_footer(self):
         layout = QHBoxLayout()
 

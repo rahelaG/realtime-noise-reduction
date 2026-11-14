@@ -1,13 +1,19 @@
 import numpy as np
+from scipy.signal import freqz_sos
 import sounddevice as sd
 
 from audio_filters import AudioFilter
+
+from collections import deque
+
+from scipy.signal import freqz_sos
 
 
 class AudioEngine:
     def __init__(self, sample_rate=48000):
         self.sample_rate = sample_rate
         self._stream = None
+        self.analysis_blocks = deque(maxlen=128)
         self._monitoring = (True, False, 0.5)
         self._requested_settings = ("lowpass", {"cutoff": 1000})
         self._requested_filter = AudioFilter("lowpass", sample_rate, cutoff=1000)
@@ -31,6 +37,27 @@ class AudioEngine:
         )
         self._requested_settings = (filter_type, settings)
 
+
+    def filter_response(self):
+        kind, settings = self._requested_settings
+        frequencies = np.linspace(0, self.sample_rate / 2, 24001)
+
+        if kind == "notch":
+            frequencies = np.unique(
+                np.append(frequencies, settings["frequency"])
+            )
+
+        sos = self._requested_filter.sos
+        if sos is None:
+            return frequencies, np.zeros_like(frequencies)
+
+        frequencies, response = freqz_sos(
+            sos, worN=frequencies, fs=self.sample_rate
+        )
+        gain_db = 20 * np.log10(np.maximum(np.abs(response), 1e-6))
+        return frequencies, gain_db
+
+
     def start(self, input_id, output_id):
         if self._stream is not None:
             raise RuntimeError("The audio stream is already open.")
@@ -43,7 +70,7 @@ class AudioEngine:
             device=output_id, channels=2, dtype="float32",
             samplerate=self.sample_rate,
         )
-
+        self.analysis_blocks.clear()
         self._active_filter = self._requested_filter
         self._active_filter.reset()
         self._next_filter = None
@@ -105,6 +132,9 @@ class AudioEngine:
         listen, use_filtered, volume = self._monitoring
         original = indata[:, 0]
         filtered = self._filter_block(original)
+        original = indata[:, 0]
+        filtered = self._filter_block(original)
+        self.analysis_blocks.append((original.copy(), filtered.copy()))
 
         if not listen:
             outdata.fill(0)
