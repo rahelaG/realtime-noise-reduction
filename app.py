@@ -1,6 +1,7 @@
 import sounddevice as sd
 import sys
 from pathlib import Path
+from test_lab import TestLab
 
 from PySide6.QtCore import Qt, QTimer
 from audio_engine import AudioEngine
@@ -80,21 +81,21 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.addTab(self.create_live_page(), "Live Studio")
 
-        # Enabled when controlled testing is implemented.
-        self.tabs.addTab(QWidget(), "Test Lab")
-        self.tabs.setTabEnabled(1, False)
-        self.tabs.setTabToolTip(
-            1,
-            "Controlled audio testing will be added in a later step.",
+        self.test_lab = TestLab(
+            live_is_active=lambda: self.audio_engine.active,
+            output_device=self.test_lab_output_device,
         )
+        self.tabs.addTab(self.test_lab, "Test Lab")
 
         root.addWidget(self.tabs, 1)
         root.addLayout(self.create_footer())
-        self.statusBar().showMessage(
-             self.statusBar().showMessage("Select your audio devices and press Start.")
-        )
+        self.statusBar().showMessage("Select your audio devices and press Start.")
 
         self.refresh_devices()
+
+    def test_lab_output_device(self):
+        selected = self.output_device.currentData()
+        return selected[0] if selected is not None else None
 
     def create_header(self):
         layout = QHBoxLayout()
@@ -289,6 +290,8 @@ class MainWindow(QMainWindow):
             self.update_device_message()
             return
 
+        self.test_lab.stop_playback()
+
         try:
             self.audio_engine.start(input_data[0], output_data[0])
         except (sd.PortAudioError, ValueError, RuntimeError) as error:
@@ -350,8 +353,9 @@ class MainWindow(QMainWindow):
             f"Processing: {processing_ms:.2f} ms  |  "
             f"Audio warnings: {warnings}"
         )
-        
+
     def closeEvent(self, event):
+        self.test_lab.stop_playback()
         self.stop_audio()
         super().closeEvent(event)
     def create_devices_card(self):
@@ -755,7 +759,7 @@ class MainWindow(QMainWindow):
             "This application reduces audio components in selected "
             "frequency ranges.\n\n"
             "Live Studio will capture and filter microphone audio.\n"
-            "Test Lab will provide repeatable experiments with known noise.\n\n"
+            "Test Lab compares clean, noisy, and filtered versions of a WAV file.\n\n"
             "Choose Filtered in Monitoring to hear the applied filter.",
         )
 
