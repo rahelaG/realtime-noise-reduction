@@ -9,6 +9,7 @@ from audio_plots import AudioPlots
 from auto_noise import detect_steady_tone
 from PySide6.QtWidgets import (
     QApplication,
+    QFileDialog,
     QCheckBox,
     QSlider,
     QDoubleSpinBox,
@@ -90,6 +91,11 @@ class MainWindow(QMainWindow):
         root.addWidget(self.tabs, 1)
         self.statusBar().showMessage("Select your audio devices and press Start.")
 
+        self.recording_timer = QTimer(self)
+        self.recording_timer.setInterval(100)
+        self.recording_timer.timeout.connect(self.update_recording_controls)
+        self.recording_timer.start()
+        self.update_recording_controls()
         self.refresh_devices()
 
     def test_lab_output_device(self):
@@ -128,6 +134,7 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(self.create_devices_card())
         layout.addWidget(self.create_monitoring_card())
+        layout.addWidget(self.create_recording_card())
 
         workspace = QHBoxLayout()
         workspace.setSpacing(18)
@@ -360,6 +367,18 @@ class MainWindow(QMainWindow):
         )
 
     def closeEvent(self, event):
+        self.audio_engine.recording.stop()
+        self.update_recording_controls()
+        if self.recording_unsaved and self.audio_engine.recording.status[1]:
+            choice = QMessageBox.question(
+                self, "Unsaved recording",
+                "The recording has not been exported. Close and discard it?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if choice != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
         self.test_lab.stop_playback()
         self.stop_audio()
         super().closeEvent(event)
@@ -467,6 +486,98 @@ class MainWindow(QMainWindow):
             bool(self.monitor_source.currentData()),
             volume / 100,
         )
+
+    def create_recording_card(self):
+        card, layout = make_card("Recording")
+        self.recording_unsaved = False
+        controls = QHBoxLayout()
+        self.record_button = QPushButton("Record")
+        self.record_button.setObjectName("PrimaryButton")
+        self.record_button.clicked.connect(self.start_recording)
+        self.stop_record_button = QPushButton("Stop Recording")
+        self.stop_record_button.clicked.connect(self.stop_recording)
+        self.export_button = QPushButton("Export WAV")
+        self.export_button.clicked.connect(self.export_recording)
+        self.recording_duration = make_label("00:00 / 01:00")
+        for widget in (self.record_button, self.stop_record_button,
+                       self.export_button, self.recording_duration):
+            controls.addWidget(widget)
+        controls.addStretch()
+        layout.addLayout(controls)
+        self.recording_message = make_label(
+            "Records original and filtered audio together, even with Listen off.",
+            "MutedText",
+        )
+        layout.addWidget(self.recording_message)
+        return card
+
+    def update_recording_controls(self):
+        recording, frames, warnings = self.audio_engine.recording.status
+        try:
+            active = self.audio_engine.active
+        except sd.PortAudioError:
+            active = False
+        if recording and not active:
+            self.audio_engine.recording.stop()
+            recording = False
+        seconds = frames / self.audio_engine.sample_rate
+        self.recording_duration.setText(
+            f"{int(seconds) // 60:02d}:{int(seconds) % 60:02d} / 01:00"
+        )
+        self.record_button.setEnabled(active and not recording)
+        self.stop_record_button.setEnabled(recording)
+        self.export_button.setEnabled(frames > 0 and not recording)
+        if recording:
+            self.recording_message.setText(
+                "Recording original + filtered. Listen and output volume do not affect the files."
+            )
+        elif self.recording_unsaved and frames:
+            reason = "60-second limit reached. " if seconds >= 60 else ""
+            warning = f" Audio warning callbacks: {warnings}." if warnings else ""
+            self.recording_message.setText(
+                reason + "Recording ready. Export before starting a new recording or closing." + warning
+            )
+
+    def start_recording(self):
+        if self.recording_unsaved and self.audio_engine.recording.status[1]:
+            choice = QMessageBox.question(
+                self, "Replace recording",
+                "The previous recording has not been exported. Replace it?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if choice != QMessageBox.StandardButton.Yes:
+                return
+        try:
+            self.audio_engine.start_recording()
+        except (RuntimeError, MemoryError) as error:
+            QMessageBox.warning(self, "Could not record", str(error))
+            return
+        self.recording_unsaved = True
+        self.update_recording_controls()
+
+    def stop_recording(self):
+        self.audio_engine.recording.stop()
+        self.update_recording_controls()
+
+    def export_recording(self):
+        folder = QFileDialog.getExistingDirectory(self, "Choose an export folder")
+        if not folder:
+            return
+        try:
+            destination, gain = self.audio_engine.recording.export(folder)
+        except (OSError, ValueError, RuntimeError) as error:
+            QMessageBox.warning(self, "Could not export recording", str(error))
+            return
+        self.recording_unsaved = False
+        self.recording_message.setText(f"Saved original.wav and filtered.wav in {destination}")
+        self.statusBar().showMessage("Recording exported successfully.")
+        QMessageBox.information(
+            self, "Recording exported",
+            f"Saved in:\n{destination}\n\noriginal.wav\nfiltered.wav\ndetails.txt\n\n"
+            f"Shared export gain: {gain:.3f}",
+        )
+        self.update_recording_controls()
 
     def create_filters_card(self):
         card, layout = make_card(
