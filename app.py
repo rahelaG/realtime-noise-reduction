@@ -88,7 +88,6 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.test_lab, "Test Lab")
 
         root.addWidget(self.tabs, 1)
-        root.addLayout(self.create_footer())
         self.statusBar().showMessage("Select your audio devices and press Start.")
 
         self.refresh_devices()
@@ -137,12 +136,18 @@ class MainWindow(QMainWindow):
         filters_card.setMinimumWidth(280)
         filters_card.setMaximumWidth(360)
 
+        analysis_card = self.create_analysis_card()
+
+        filters_card.setFixedHeight(460)
+        analysis_card.setFixedHeight(460)
+
         workspace.addWidget(filters_card, 1)
-        workspace.addWidget(self.create_analysis_card(), 2)
+        workspace.addWidget(analysis_card, 2)
 
-        layout.addLayout(workspace, 1)
+        layout.addLayout(workspace)
+        layout.addStretch()
+
         return page
-
     def refresh_devices(self):
         """Read devices and preserve the previous selection if possible."""
         previous_input = self.input_device.currentData()
@@ -741,16 +746,7 @@ class MainWindow(QMainWindow):
         self.audio_plots = AudioPlots(self.audio_engine)
         layout.addWidget(self.audio_plots, 1)
         return card
-    def create_footer(self):
-        layout = QHBoxLayout()
 
-        layout.addWidget(make_label("Not connected", "StatusBadge"))
-        layout.addStretch()
-        layout.addWidget(
-            make_label("Development stage: interface layout", "MutedText")
-        )
-
-        return layout
 
     def show_help(self):
         QMessageBox.information(
