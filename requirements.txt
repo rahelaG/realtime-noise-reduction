@@ -1,4 +1,5 @@
 numpy
-scipy
+scipy>=1.15
 sounddevice
 PySide6
+pyqtgraph

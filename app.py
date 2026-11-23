@@ -862,12 +862,36 @@ class MainWindow(QMainWindow):
     def show_help(self):
         QMessageBox.information(
             self,
-            "About Noise Reduction Studio",
-            "This application reduces audio components in selected "
-            "frequency ranges.\n\n"
-            "Live Studio will capture and filter microphone audio.\n"
-            "Test Lab compares clean, noisy, and filtered versions of a WAV file.\n\n"
-            "Choose Filtered in Monitoring to hear the applied filter.",
+            "Noise Reduction Studio — Quick Guide",
+            "LIVE STUDIO\n"
+            "Select an input and stereo output, then press Start. Use headphones for live monitoring.\n"
+            "Listen enables playback. Select Original or Filtered and adjust output volume.\n\n"
+            "FILTERS\n"
+            "Presets: prepared voice demonstrations; click Apply Preset.\n"
+            "Custom: choose a filter, edit its parameters, then click Apply Changes.\n"
+            "High-pass reduces lows; low-pass reduces highs; band-stop reduces a band; "
+            "notch reduces a narrow region. Filtering can also change the voice.\n\n"
+            "AUTO\n"
+            "Start live audio, keep the background noise present and stay quiet. Click Calibrate. "
+            "Auto detects one steady tone between 40 and 3000 Hz and applies a notch. "
+            "Recalibrate if the tone changes. It does not remove every type of noise.\n\n"
+            "RECORDING\n"
+            "Record saves original and filtered signals together, even with Listen off. "
+            "Stop Recording ends the take; Export WAV saves both tracks in a new folder. "
+            "Maximum duration: 60 seconds. Export before closing.\n\n"
+            "TEST LAB\n"
+            "Open a 1–60 second WAV, choose the added noise and filter, then Run Test. "
+            "Compare Clean, Noisy and Filtered. Noise and filter choices are independent. "
+            "Auto calibrates on generated noise alone. Attenuation measures that noise, not voice quality. "
+            "Stop live audio before test playback.\n\n"
+            "PLOTS AND METRICS\n"
+            "Blue: original; green: filtered. The spectrum uses the last second. "
+            "Processing time is callback work, not total audio latency. "
+            "Audio warnings may indicate missing or interrupted sound.\n\n"
+            "TROUBLESHOOTING\n"
+            "Check Windows microphone permissions, the selected device and its input level. "
+            "Noise suppression may hide test tones. Bluetooth can add delay. "
+            "For repeatable tests, use Test Lab. See README.md for full instructions.",
         )
 
 
