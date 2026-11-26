@@ -591,16 +591,41 @@ class MainWindow(QMainWindow):
         presets_layout = QVBoxLayout(presets_page)
         self.preset_combo = QComboBox()
         for name, kind, settings, description in (
-             ("Low Voice Notch Demo", "notch", {"frequency": 300, "quality": 0.7},
-             "Wide notch at 300 Hz (Q 0.7)"),
-            ("Muffled Voice Demo", "lowpass", {"cutoff": 500},
-             "Low-pass at 500 Hz"),
-            ("Thin Voice Demo", "highpass", {"cutoff": 1500},
-             "High-pass at 1,500 Hz"),
-            ("Mid Voice Notch Demo", "notch", {"frequency": 1000, "quality": 0.7},
-             "Wide notch at 1,000 Hz (Q 0.7)"),
+            (
+                "Strong Low-frequency Reduction",
+                "highpass",
+                {"cutoff": 1500},
+                "High-pass at 1,500 Hz — strongly reduces lows; thins speech",
+            ),
+            (
+                "Strong High-frequency Reduction",
+                "lowpass",
+                {"cutoff": 1000},
+                "Low-pass at 1,000 Hz — strongly reduces highs; muffles speech",
+            ),
+            (
+                "Strong Mid-band Reduction",
+                "bandstop",
+                {"low": 500, "high": 2500},
+                "Band-stop from 500 to 2,500 Hz — strongly affects speech too",
+            ),
+            (
+                "Wide 1 kHz Tone Reduction",
+                "notch",
+                {"frequency": 1000, "quality": 2},
+                "Wide notch at 1,000 Hz (Q 2) — also affects nearby speech",
+            ),
+            (
+                "Wide 2 kHz Tone Reduction",
+                "notch",
+                {"frequency": 2000, "quality": 2},
+                "Wide notch at 2,000 Hz (Q 2) — also affects nearby speech",
+            ),
         ):
-            self.preset_combo.addItem(name, (kind, settings, description))
+            self.preset_combo.addItem(
+                name,
+                (kind, settings, description),
+            )
 
         self.preset_description = make_label("", "MutedText")
         self.preset_error = make_label("")
